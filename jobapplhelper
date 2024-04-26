@@ -1,0 +1,351 @@
+'***********************************************************************************************
+'
+' Name:                 JobApplHelper
+' Description:          This VBA script is intended to be used in Microsoft Word to call the
+'                       OpenAI API: https://api.openai.com/v1/chat/completions to help you in your
+'                       job application.  
+'                       It performs 2 tasks using your resume and the job description:
+'                       1) Compare the terminology used in the resume and the job description and list the differences
+'                       2) lists skills that are missing on your resume that the job description contains
+'
+' Date:                 April 26, 2024
+' Author:               Mark Stankevicius
+' GitHib Repository:    https://github.com/stankev/chatgpt-word-jobapplhelper
+'
+'************************************************************************************************
+Sub JobApplHelper()
+        
+    Dim returnedText As String, response As String
+    Dim systemPrompt As String, chatPromptResume As String, chatPromptJob As String
+    Dim url As String, requestData As String, modelName As String
+    Dim httpRequest As Object
+    Dim OpenAI_Api_Key As String
+    Dim statusCode As Long
+    Dim errorText As String, displayErrorText As String, errorType As String
+    Dim startString As String, endString As String
+    Dim jsonObjE As Object
+    Dim currentDoc As Document
+    Dim tempValue As Double, top_pValue As Double, freqPenalty As Double, presPenalty As Double
+    Dim displayText As String                   ' will hold the generated text to be inserted into the document
+
+    
+    ' Set the info for the POST request
+    ' Enter Your API Key in the line below
+    OpenAI_Api_Key = "sk-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"  ' replace this text between the apostrophes with your API key
+
+    ' Set the API endpoint URL
+    url = "https://api.openai.com/v1/chat/completions"  ' compatible with gpt-4, gpt-4-turbo-preview, gpt-3.5-turbo
+    
+    ' Set the Model Name for use in the request
+    modelName = "gpt-4-turbo-preview"
+
+    
+    ' Extract the resume text from the document and store in the variable for later use
+    startString = "resume:"                               ' Set the start delimiter for the search
+    endString = "resume end"                              ' Set the end delimiter for the search
+    returnedText = ExtractText(startString, endString)
+    If Left(returnedText, 7) = "Error: " Then             ' If the extracted text has an issue display an error message to the Word UI
+        MsgBox returnedText
+        Exit Sub
+    End If
+        
+    'Cleaning the resume text and make sure it's all one contunuous string of text without formatting ASCII characters
+    chatPromptResume = CleanText(returnedText)
+
+
+    ' Extract the job description from the document and store in the variable for later use
+    startString = "job description:"                        ' Set the start delimiter for the search
+    endString = "job description end"                       ' Set the end delimiter for the search
+    returnedText = ExtractText(startString, endString)
+    If Left(returnedText, 7) = "Error: " Then
+        MsgBox returnedText
+        Exit Sub
+    End If
+        
+    'Cleaning the job description text and make sure it's all one contunuous string of text without formatting ASCII characters
+    chatPromptJob = CleanText(returnedText)
+
+
+    ' First call to OpenAI API will be to compare the terminology used in the resume and the job description
+    ' and recommend changes to the resume to better align your resume with the terms used in the job description
+    '
+    systemPrompt = "I am using this tool to enhance my resume to align with ATS functionality by aligning resume terminology with a job description" & _
+               " terminology. Please act as an expert recruiter reviewing my resume for an open job role that I am applying to. " & _
+               "I will provide you with the job description, and my relevant skills and experience in the form of a resume. " & _
+               "You will use this information to list areas where the terminology used in my resume is different than the " & _
+               "terminology used in the job description. The terminology should mean the same thing but the words that are " & _
+               "used are slightly different. Simply list the terminology differences between the two in a concise list. " & _
+               "Do not generate suggested changes to the resume terminology. Generate the output in an easy to follow set differences." & _
+               "An example of different terminology would be SaaS software vs cloud software, or People Management vs Personnel " & _
+               "Management, and e-Commerce vs eCommerce.  Do not format the text with bold."
+    
+        
+    ' Set the values for temperature and top_p - you can experiment with these values to get your desired results
+    tempValue = 0.35            ' set the temperature to 0.35 to be more deterministic and focused and match the terminology more accurately
+    top_pValue = 0.8            ' set the top_p to 0.8 to ensure that the goal is to identify and match specific terminologies rather than generate creative content
+
+    ' Construct JSON request data
+    requestData = "{""model"":""" & modelName & """, " & _
+              """messages"": [{""role"":""system"",""content"":""" & systemPrompt & """}, " & _
+                             "{""role"":""user"",""content"":""" & chatPromptResume & """}, " & _
+                             "{""role"":""user"",""content"":""" & chatPromptJob & """} ], " & _
+              """temperature"": " & tempValue & ", " & _
+              """top_p"": " & top_pValue & ", " & _
+              """max_tokens"": 850}"
+     
+    ' Create the HTTP request object
+    Set httpRequest = CreateObject("MSXML2.XMLHTTP")
+       
+    ' Set HTTP request parameters and make API call
+    With httpRequest
+       .Open "POST", url, False
+       .setRequestHeader "Content-Type", "application/json"
+       .setRequestHeader "Authorization", "Bearer " & OpenAI_Api_Key ' uses your API key that you assigned earlier in the code
+       .send requestData
+       statusCode = .Status
+       response = .responseText
+    End With
+    
+    ' Check if request was successful
+    If statusCode = 200 Then
+        ' text generation was successful
+               
+        ' Set the range to the end of the current active document
+        Set TextRange = ActiveDocument.Content                       ' set the range to the entire current active document
+        TextRange.Collapse Direction:=wdCollapseEnd                  ' collapse the range to the end
+        
+        ' Insert a title for the list of terminology differences
+        TextRange.text = vbNewLine & "This is a list of differences to consider between the job description and your resume:"
+                
+        ' Apply bold and underlined formatting to the title line
+        With TextRange.Font
+           .Bold = True
+           .Underline = wdUnderlineSingle
+           .Color = RGB(0, 0, 0)
+        End With
+               
+        ' Set the range to the new end of the current active document
+        Set TextRange = ActiveDocument.Content
+        TextRange.Collapse Direction:=wdCollapseEnd
+
+        displayText = FormatResponse(response)      ' Format the JSON response with the action items
+        
+        'Insert the terminology differences into the Word document at the end of any existing text
+        TextRange.text = vbNewLine & displayText
+        
+        ' Change formatting of new text to not bold and not underlined
+        With TextRange.Font
+            .Bold = False
+            .Underline = False
+        End With
+       
+    Else
+        ' Error condition - Parse the JSON response and extract the error information
+        Set jsonObjE = JsonConverter.ParseJson(response)
+        errorText = jsonObjE("error")("message")
+        errorType = jsonObjE("error")("type")
+           
+        ' Set a range at the end of the current active document
+        Set TextRange = ActiveDocument.Content                      ' set the range to the entire current active document
+        TextRange.Collapse Direction:=wdCollapseEnd                 ' collapse the range to the end
+        
+        ' Format the error text to display and insert error message into Word document
+        displayErrorText = "Error: Status code = " & statusCode & vbCrLf & "Error type = " & errorType & vbCrLf & "Error Description = " & errorText
+        TextRange.text = vbNewLine & displayErrorText
+      
+    End If
+    
+    ' Clean up the HTTP request object before using it in the next call
+    Set httpRequest = Nothing
+    
+      
+    
+    ' The second call to OpenAI API will be to compare the resume and the job description to determine what are the
+    ' missing skills or experience that you can consider adding to your resume if you have those skills and experience
+    '
+    systemPrompt = "You are an expert recruiter. I will provide you with the text of my resume and the job " & _
+                    "description for a job I am applying for. Your task is to review both documents carefully. " & _
+                    "Please identify and list the specific skills, experiences, and qualifications mentioned in the " & _
+                    " job description that are not currently evident in my resume. For each identified item do " & _
+                    "two things:  1) provide a list of the items in bullet form, and 2) suggest how I could " & _
+                    "represent any relevant skills or experiences I might possess but have not listed on my " & _
+                    "resume. Your goal is to help me bridge the gap between my current resume and the job requirements."
+
+    
+    ' Set the values for temperature and top_p - you can experiment with these values to get your desired results
+    tempValue = 0.25
+    top_pValue = 0.8
+    freqPenalty = 0.4    ' use a value of 0.4 to direct the model to achieve a more comprehensive list of unique and diverse suggestions
+    presPenalty = 0.4    ' use a value of 0.4 to ensure that the model covers a broad range of skills and experiences without focusing too much on repeating the same points
+    
+    ' Construct JSON request data
+    requestData = "{""model"":""" & modelName & """, " & _
+              """messages"": [{""role"":""system"",""content"":""" & systemPrompt & """}, " & _
+                             "{""role"":""user"",""content"":""" & chatPromptResume & """}, " & _
+                             "{""role"":""user"",""content"":""" & chatPromptJob & """} ], " & _
+              """temperature"": " & tempValue & ", " & _
+              """top_p"": " & top_pValue & ", " & _
+              """frequency_penalty"": " & freqPenalty & ", " & _
+              """presence_penalty"": " & presPenalty & ", " & _
+              """max_tokens"": 950}"
+     
+    ' Create the HTTP request object
+    Set httpRequest = CreateObject("MSXML2.XMLHTTP")
+       
+    ' Set HTTP request parameters and call API
+    With httpRequest
+       .Open "POST", url, False
+       .setRequestHeader "Content-Type", "application/json"
+       .setRequestHeader "Authorization", "Bearer " & OpenAI_Api_Key
+       .send requestData
+       statusCode = .Status
+       response = .responseText
+    End With
+
+    ' Check if request was successful
+    If statusCode = 200 Then
+        ' text generation was successful
+               
+        ' Set the range to the end of the current active document
+        Set TextRange = ActiveDocument.Content                       ' set the range to the entire current active document
+        TextRange.Collapse Direction:=wdCollapseEnd                  ' collapse the range to the end
+        
+        ' Insert a title for the list of terminology differences
+       '  TextRange.text = vbNewLine & "This is a list of differences between your job description and resume to consider:"
+               
+        ' Set the range to the new end of the current active document
+        Set TextRange = ActiveDocument.Content
+        TextRange.Collapse Direction:=wdCollapseEnd
+
+        displayText = FormatResponse(response)      ' Format the JSON response with the action items
+        
+        'Insert the missing skills and experience into the Word document at the end of any existing text
+        TextRange.text = vbNewLine & vbNewLine & displayText
+       
+    Else
+        ' Error condition - Parse the JSON response and extract the error information
+        Set jsonObjE = JsonConverter.ParseJson(response)
+        errorText = jsonObjE("error")("message")
+        errorType = jsonObjE("error")("type")
+           
+        ' Set a range at the end of the current active document
+        Set TextRange = ActiveDocument.Content                      ' set the range to the entire current active document
+        TextRange.Collapse Direction:=wdCollapseEnd                 ' collapse the range to the end
+        
+        ' Format the error text to display and insert error message into Word document
+        displayErrorText = "Error: " & vbCrLf & "Error type = " & errorType & vbCrLf & "Error Description = " & errorText
+        TextRange.text = vbNewLine & displayErrorText
+      
+    End If
+
+   ' Clean up the HTTP request object
+    Set httpRequest = Nothing
+
+End Sub
+
+' Extract the generated text from the chat/completions API response
+Function FormatResponse(responseText As String) As String
+ 
+    Dim jsonObj As Object
+    Dim textToInsert As String
+    On Error GoTo FormatResponseError
+    
+    ' Parse the JSON response
+    Set jsonObj = JsonConverter.ParseJson(responseText)
+    
+    ' Check if JSON parsing was successful
+    If jsonObj Is Nothing Then
+        ' Handle JSON parsing failure
+        FormatResponse = "Error: JSON parsing failed."
+        Exit Function
+    End If
+    
+    ' Check if the expected structure of JSON is found
+    If Not jsonObj.Exists("choices") Or jsonObj("choices").Count = 0 Then
+        ' Handle unexpected JSON structure
+        FormatResponse = "Error: Unexpected JSON structure."
+        Exit Function
+    End If
+    
+    ' Extract the "content" part from the JSON response - which contains the text of the response
+    textToInsert = jsonObj("choices")(1)("message")("content")
+    
+    ' Return the extracted text
+    FormatResponse = textToInsert
+    
+    Exit Function
+    
+FormatResponseError:
+
+    MsgBox "Error " & Err.Number & " (" & Err.Description & ") in procedure FormatResponse."
+    
+End Function
+
+' Extract the text needed from the word document and return string to the caller
+Function ExtractText(startDelim As String, endDelim As String) As String
+    On Error GoTo ErrorHandler
+
+    Dim doc As Document
+    Dim searchRange As Range
+    Dim startPos As Long
+    Dim endPos As Long
+    Dim extractedText As String
+        
+    ' Set the document object to current document
+    Set doc = ActiveDocument
+    
+    ' Set the search range to the entire document
+    Set searchRange = doc.Range
+
+    With searchRange.Find                       ' work with the current document contents that is copied to searchRange
+        .ClearFormatting                        ' clear any previous formatting that might affect the search
+        .text = startDelim                      ' starting delimimeter for the text
+        If .Execute Then
+            startPos = searchRange.End + 1      ' set the startPos to the end of the found text
+        Else
+            ' text start delimiter not found
+            ExtractText = "Error: """ & startDelim & """ text not found"
+            Exit Function
+        End If
+    End With
+            
+    Set searchRange = doc.Range                 ' reset the search range to the entire document
+            
+    With searchRange.Find                       ' work with the current document contents that is copied to searchRange
+        .ClearFormatting                        ' clear any previous formatting that might affect the search
+        .text = endDelim                        ' ending delimimeter for the text
+        If .Execute Then
+            endPos = searchRange.Start - 1      ' move back 1 character before the end delimiter
+        Else
+            ' text end delimiter not found
+            ExtractText = "Error: """ & endDelim & """ text not found"
+            Exit Function
+        End If
+    End With
+        
+    extractedText = Mid(doc.Range(startPos, endPos).text, 1)         ' extract the text from the document & return to the caller
+    ExtractText = extractedText
+    
+    Exit Function
+    
+ErrorHandler:
+    ' Handle any unexpected errors
+    ExtractText = "Error: an unexpected error occurred in procedure ExtractText"
+    
+End Function
+
+' Clean up the string of text to remove ASCII formating that will cause issues with the API call
+Function CleanText(textToClean As String) As String
+    Dim cleanedText As String
+    
+    cleanedText = Replace(textToClean, vbLf, "")              ' remove line feed characters
+    cleanedText = Replace(cleanedText, vbCr, "")              ' remove carriage return characters
+    cleanedText = Replace(cleanedText, vbTab, "")             ' remove tab characters
+    cleanedText = Replace(cleanedText, vbVerticalTab, "")     ' remove manual line break characters
+    cleanedText = Replace(cleanedText, vbCrLf, "")            ' remove combined carriage return and line feed characters
+    cleanedText = Replace(cleanedText, Chr(34), Chr(39))      ' replace double quotes with single quote
+    cleanedText = Replace(cleanedText, Chr(7), "")            ' remove bell characters
+    cleanedText = Replace(cleanedText, Chr(1), "")            ' remove start of header characters
+    CleanText = cleanedText
+
+End Function
