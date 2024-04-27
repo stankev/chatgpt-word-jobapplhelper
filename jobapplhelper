@@ -233,7 +233,7 @@ Sub JobApplHelper()
         TextRange.Collapse Direction:=wdCollapseEnd                 ' collapse the range to the end
         
         ' Format the error text to display and insert error message into Word document
-        displayErrorText = "Error: " & vbCrLf & "Error type = " & errorType & vbCrLf & "Error Description = " & errorText
+        displayErrorText = "Error: Status code = " & statusCode & vbCrLf & "Error type = " & errorType & vbCrLf & "Error Description = " & errorText
         TextRange.text = vbNewLine & displayErrorText
       
     End If
