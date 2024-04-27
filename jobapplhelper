@@ -10,7 +10,7 @@
 '
 ' Date:                 April 26, 2024
 ' Author:               Mark Stankevicius
-' GitHib Repository:    https://github.com/stankev/chatgpt-word-jobapplhelper
+' GitHub Repository:    https://github.com/stankev/chatgpt-word-jobapplhelper
 '
 '************************************************************************************************
 Sub JobApplHelper()
