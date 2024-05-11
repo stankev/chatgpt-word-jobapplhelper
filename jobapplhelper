@@ -128,7 +128,7 @@ Sub JobApplHelper()
         Set TextRange = ActiveDocument.Content
         TextRange.Collapse Direction:=wdCollapseEnd
 
-        displayText = FormatResponse(response)      ' Format the JSON response with the action items
+        displayText = FormatResponse(response)     ' Format the JSON response with the terminology differences
         
         'Insert the terminology differences into the Word document at the end of any existing text
         TextRange.text = vbNewLine & displayText
@@ -211,17 +211,30 @@ Sub JobApplHelper()
         TextRange.Collapse Direction:=wdCollapseEnd                  ' collapse the range to the end
         
         ' Insert a title for the list of terminology differences
-       '  TextRange.text = vbNewLine & "This is a list of differences between your job description and resume to consider:"
+       '  TextRange.text = vbNewLine & vbNewLine & "This is a list of specific skills, experiences, and qualifications not listed in your resume that the job description lists:"
+               
+        ' Apply bold and underlined formatting to the title line
+        With TextRange.Font
+           .Bold = True
+           .Underline = wdUnderlineSingle
+           .Color = RGB(0, 0, 0)
+        End With
                
         ' Set the range to the new end of the current active document
         Set TextRange = ActiveDocument.Content
         TextRange.Collapse Direction:=wdCollapseEnd
 
-        displayText = FormatResponse(response)      ' Format the JSON response with the action items
+        displayText = FormatResponse(response)      ' Format the JSON response with the list of differences
         
         'Insert the missing skills and experience into the Word document at the end of any existing text
-        TextRange.text = vbNewLine & vbNewLine & displayText
-       
+        TextRange.text = vbNewLine & displayText
+               
+        ' Change formatting of new text to not bold and not underlined
+        With TextRange.Font
+            .Bold = False
+            .Underline = False
+        End With
+
     Else
         ' Error condition - Parse the JSON response and extract the error information
         Set jsonObjE = JsonConverter.ParseJson(response)
