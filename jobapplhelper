@@ -34,10 +34,10 @@ Sub JobApplHelper()
     OpenAI_Api_Key = "sk-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"  ' replace this text between the apostrophes with your API key
 
     ' Set the API endpoint URL
-    url = "https://api.openai.com/v1/chat/completions"  ' compatible with gpt-4, gpt-4-turbo-preview, gpt-3.5-turbo
+    url = "https://api.openai.com/v1/chat/completions"  ' compatible with gpt-4o-mini, gpt-4, gpt-4o, gpt-4-turbo, gpt-3.5-turbo,gpt-4o-audio-preview, 
     
     ' Set the Model Name for use in the request
-    modelName = "gpt-4-turbo-preview"
+    modelName = "gpt-4o-mini"
 
     
     ' Extract the resume text from the document and store in the variable for later use
